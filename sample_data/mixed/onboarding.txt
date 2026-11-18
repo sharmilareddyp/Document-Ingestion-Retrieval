@@ -1,0 +1,3 @@
+Employee onboarding guide
+
+New hires complete security training before production access.

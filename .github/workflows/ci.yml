@@ -1,0 +1,43 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: ingestion
+          POSTGRES_PASSWORD: ingestion
+          POSTGRES_DB: ingestion
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ingestion -d ingestion"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+    env:
+      DATABASE_URL: postgresql+psycopg://ingestion:ingestion@localhost:5432/ingestion
+      EMBEDDING_BACKEND: fake
+      VECTOR_BACKEND: memory
+      API_AUTH_ENABLED: "false"
+      ALLOW_PRIVATE_SOURCE_HOSTS: "true"
+      ALLOWED_SOURCE_HOSTS: localhost,127.0.0.1
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install
+        run: pip install -e ".[dev]"
+      - name: Lint
+        run: ruff check app tests scripts benchmarks airflow/dags && ruff format --check app tests scripts benchmarks
+      - name: Migrate
+        run: alembic upgrade head
+      - name: Test
+        run: pytest

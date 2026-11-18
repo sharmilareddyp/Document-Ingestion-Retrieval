@@ -1,0 +1,14 @@
+FROM apache/airflow:2.10.4-python3.11
+
+USER root
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends gcc libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
+USER airflow
+
+COPY --chown=airflow:root pyproject.toml README.md alembic.ini /opt/app/
+COPY --chown=airflow:root app /opt/app/app
+COPY --chown=airflow:root migrations /opt/app/migrations
+WORKDIR /opt/app
+RUN pip install --no-cache-dir --constraint "https://raw.githubusercontent.com/apache/airflow/constraints-2.10.4/constraints-3.11.txt" .
+WORKDIR /opt/airflow

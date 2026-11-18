@@ -1,0 +1,131 @@
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: ingestion
+      POSTGRES_PASSWORD: ingestion
+      POSTGRES_DB: ingestion
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./scripts/init-postgres.sql:/docker-entrypoint-initdb.d/10-airflow.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ingestion -d ingestion"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  api:
+    build: .
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://ingestion:ingestion@postgres:5432/ingestion
+      VECTOR_BACKEND: ${VECTOR_BACKEND:-fake}
+      EMBEDDING_BACKEND: ${EMBEDDING_BACKEND:-fake}
+      VECTOR_STORE_PATH: /data/vector_store.json
+      DATA_DIR: /data
+      ALLOWED_FILE_ROOTS: /data,/sample_data
+      ALLOWED_SOURCE_HOSTS: localhost,127.0.0.1,sample-api
+    ports:
+      - "8000:8000"
+    volumes:
+      - appdata:/data
+      - ./sample_data:/sample_data:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  worker:
+    build: .
+    command: ["worker"]
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://ingestion:ingestion@postgres:5432/ingestion
+      VECTOR_BACKEND: ${VECTOR_BACKEND:-fake}
+      EMBEDDING_BACKEND: ${EMBEDDING_BACKEND:-fake}
+      VECTOR_STORE_PATH: /data/vector_store.json
+      DATA_DIR: /data
+      ALLOWED_FILE_ROOTS: /data,/sample_data
+      ALLOWED_SOURCE_HOSTS: localhost,127.0.0.1,sample-api
+    volumes:
+      - appdata:/data
+      - ./sample_data:/sample_data:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  sample-api:
+    build: .
+    entrypoint: ["python", "/app/scripts/sample_api.py"]
+    environment:
+      SAMPLE_API_HOST: 0.0.0.0
+      SAMPLE_API_PORT: "8090"
+    ports:
+      - "8090:8090"
+    volumes:
+      - ./scripts:/app/scripts:ro
+
+  airflow-init:
+    build:
+      context: .
+      dockerfile: Dockerfile.airflow
+    env_file: .env
+    environment: &airflow-env
+      AIRFLOW__CORE__EXECUTOR: LocalExecutor
+      AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+      AIRFLOW__CORE__DAGS_FOLDER: /opt/airflow/dags
+      AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW_FERNET_KEY:-MDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDA=}
+      AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW_SECRET_KEY:-local-dev-webserver-secret}
+      AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres:5432/airflow
+      DATABASE_URL: postgresql+psycopg://ingestion:ingestion@postgres:5432/ingestion
+      VECTOR_BACKEND: ${VECTOR_BACKEND:-fake}
+      EMBEDDING_BACKEND: ${EMBEDDING_BACKEND:-fake}
+      VECTOR_STORE_PATH: /data/vector_store.json
+      DATA_DIR: /data
+      ALLOWED_FILE_ROOTS: /data,/sample_data
+      ALLOWED_SOURCE_HOSTS: localhost,127.0.0.1,sample-api
+    volumes: &airflow-volumes
+      - ./airflow/dags:/opt/airflow/dags
+      - ./sample_data:/sample_data:ro
+      - appdata:/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+    entrypoint: /bin/bash
+    command:
+      - -c
+      - |
+        airflow db migrate
+        airflow users create --username admin --password admin --firstname Local --lastname Admin --role Admin --email admin@example.com || true
+    restart: "no"
+
+  airflow-webserver:
+    build:
+      context: .
+      dockerfile: Dockerfile.airflow
+    env_file: .env
+    environment: *airflow-env
+    volumes: *airflow-volumes
+    ports:
+      - "8080:8080"
+    command: webserver
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+
+  airflow-scheduler:
+    build:
+      context: .
+      dockerfile: Dockerfile.airflow
+    env_file: .env
+    environment: *airflow-env
+    volumes: *airflow-volumes
+    command: scheduler
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+
+volumes:
+  pgdata:
+  appdata:

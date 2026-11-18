@@ -1,0 +1,62 @@
+[project]
+name = "document-ingestion-retrieval"
+version = "1.0.0"
+description = "Enterprise document ingestion, provenance, and semantic retrieval platform"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.115.6",
+    "uvicorn[standard]>=0.34.0",
+    "pydantic>=2.10.4",
+    "pydantic-settings>=2.7.0",
+    "sqlalchemy>=2.0.36",
+    "alembic>=1.14.0",
+    "psycopg[binary]>=3.2.3",
+    "httpx>=0.28.1",
+    "pymupdf>=1.25.1",
+    "python-docx>=1.1.2",
+    "beautifulsoup4>=4.12.3",
+    "lxml>=5.3.0",
+    "pinecone>=5.4.2",
+    "openai>=1.59.6",
+    "python-multipart>=0.0.20",
+    "prometheus-client>=0.21.1",
+    "tenacity>=9.0.0",
+    "charset-normalizer>=3.4.1",
+    "tiktoken>=0.8.0",
+    "opentelemetry-api>=1.29.0",
+    "structlog>=24.4.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3.4",
+    "ruff>=0.8.6",
+]
+
+[tool.setuptools.packages.find]
+include = ["app*"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["app", "tests", "scripts", "benchmarks"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "W"]
+ignore = ["B008", "E501", "UP042"]
+
+[tool.ruff.lint.per-file-ignores]
+"airflow/dags/*.py" = ["E402"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "integration: tests that require PostgreSQL",
+    "live: tests that call OpenAI or Pinecone",
+]
+filterwarnings = ["ignore::DeprecationWarning"]
+addopts = "-q"
+
+[tool.ruff.format]
+quote-style = "double"
